@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UTM → Lat/Lon (WGS84) — Single File Tool</title>
+  <script>
+    // Apply saved theme ASAP to avoid FOUC
+    (function(){
+      try{
+        const saved = localStorage.getItem('themeOverride');
+        const theme = (saved==='light'||saved==='dark') ? saved : (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+        document.documentElement.setAttribute('data-theme', theme);
+      }catch(e){ document.documentElement.setAttribute('data-theme','light'); }
+    })();
+  </script>
+  <style>
+    /* THEME VARIABLES */
+    :root{
+      --bg:#f6f7fb; --fg:#1b1e24; --card:#ffffff; --muted:#5b6571; --acc:#0b74ff; --ok:#16a34a; --warn:#b45309; --err:#dc2626;
+      --border: rgba(127,127,127,.22);
+    }
+    [data-theme="dark"]{
+      --bg:#0b0c10; --fg:#e8e8e8; --card:#15171d; --muted:#a9b1ba; --acc:#3aa1ff; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444;
+      --border: rgba(127,127,127,.28);
+    }
+
+    html,body{height:100%}
+    body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--fg);}
+    .wrap{max-width:1100px;margin:0 auto;padding:18px 16px 80px;position:relative}
+    h1{font-size:clamp(22px,2.4vw,30px);margin:8px 0 14px}
+    .grid{display:grid;grid-template-columns:1fr;gap:14px}
+    @media(min-width:900px){.grid{grid-template-columns:380px 1fr}}
+    .card{background:var(--card);border-radius:16px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:16px}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    label{font-size:13px;color:var(--muted)}
+    input[type="number"],input[type="text"],select{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--fg)}
+    input[type="file"]{width:100%}
+    .hint{font-size:12px;color:var(--muted)}
+    .section-title{font-weight:700;margin:8px 0 6px}
+    .btn{appearance:none;border:none;border-radius:14px;padding:12px 16px;font-weight:600;cursor:pointer;transition:.2s;background:var(--acc);color:white}
+    .btn[disabled]{opacity:.45;cursor:not-allowed}
+    .btn.secondary{background:#3b3f46}
+    [data-theme="light"] .btn.secondary{background:#3b3f46}
+    [data-theme="dark"] .btn.secondary{background:#3b3f46}
+    .btn.ok{background:var(--ok)}
+    .btn.warn{background:var(--warn)}
+    .btn.err{background:var(--err)}
+    .stack{display:flex;gap:10px;flex-wrap:wrap}
+    .table-wrap{max-height:420px;overflow:auto;border-radius:12px;border:1px solid var(--border)}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{padding:10px 12px;border-bottom:1px solid rgba(127,127,127,.18)}
+    th{position:sticky;top:0;background:var(--card);z-index:1}
+    .pill{display:inline-block;padding:4px 8px;border-radius:999px;background:rgba(58,161,255,.14);color:var(--acc);font-size:12px;margin-left:6px}
+    .error{padding:10px 12px;border-radius:12px;background:rgba(239,68,68,.12);color:var(--err);font-size:13px}
+    .success{padding:10px 12px;border-radius:12px;background:rgba(34,197,94,.12);color:var(--ok);font-size:13px}
+    .map{height:360px;border-radius:12px;border:1px solid var(--border)}
+    details{border:1px dashed var(--border);padding:10px 12px;border-radius:12px}
+    summary{cursor:pointer;font-weight:600}
+
+    /* Toolbar / Theme selector */
+    .toolbar{display:flex;gap:10px;align-items:center;justify-content:space-between}
+    .theme-ctl{display:flex;gap:8px;align-items:center}
+    .theme-btn{display:inline-flex;align-items:center;gap:8px;background:transparent;border:1px solid var(--border);color:var(--fg);padding:8px 12px;border-radius:999px;cursor:pointer}
+    .theme-btn:hover{box-shadow:0 1px 8px rgba(0,0,0,.12)}
+    .ico{width:18px;height:18px;display:inline-block}
+
+    /* Credit badge */
+    .credit{position:fixed;right:14px;bottom:12px;font-size:12px;color:var(--muted);background:var(--card);border:1px solid var(--border);padding:6px 10px;border-radius:999px;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="toolbar">
+      <h1>UTM → Lat/Lon (WGS84) <span class="pill">Single file</span></h1>
+      <div class="theme-ctl">
+        <button id="themeBtn" class="theme-btn" aria-label="Toggle theme">
+          <span id="themeIcon" class="ico" aria-hidden="true"></span>
+          <span id="themeLabel">Theme</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card" id="controls">
+        <!-- Global settings -->
+        <div class="row">
+          <div style="flex:1 1 120px">
+            <label>UTM Zone (1–60)</label>
+            <input type="number" id="zone" min="1" max="60" value="43" />
+            <div class="hint">For Bhavnagar, zone is 43.</div>
+          </div>
+          <div style="flex:1 1 160px">
+            <label>Hemisphere</label>
+            <select id="hemi">
+              <option value="N" selected>Northern</option>
+              <option value="S">Southern</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+        <div class="row">
+          <div>
+            <label>Output format:</label>
+            <div class="row">
+              <label><input type="radio" name="fmt" value="dd" checked> Decimal Degrees</label>
+              <label><input type="radio" name="fmt" value="dms"> Deg-Min-Sec</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Manual Entry -->
+        <div style="height:16px"></div>
+        <div class="section-title">Manual Entry (UTM)</div>
+        <div class="row">
+          <div style="flex:1 1 120px">
+            <label>Sr No (optional)</label>
+            <input type="text" id="m-number" placeholder="e.g., 1" />
+          </div>
+          <div style="flex:2 1 180px">
+            <label>Name (optional)</label>
+            <input type="text" id="m-name" placeholder="e.g., TP-01" />
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1 1 150px">
+            <label>Easting* (m)</label>
+            <input type="number" id="m-east" step="any" placeholder="e.g., 238456.12" />
+          </div>
+          <div style="flex:1 1 150px">
+            <label>Northing* (m)</label>
+            <input type="number" id="m-north" step="any" placeholder="e.g., 2401234.56" />
+          </div>
+          <div style="flex:1 1 120px">
+            <label>Altitude (m)</label>
+            <input type="number" id="m-alt" step="any" placeholder="optional" />
+          </div>
+        </div>
+        <div class="stack" style="margin-top:8px">
+          <button class="btn" id="mConvert">Convert Single</button>
+          <button class="btn secondary" id="mAdd">Add Point</button>
+          <button class="btn secondary" id="clearAll">Clear Results</button>
+        </div>
+        <div class="hint">Manual converts one UTM point using the selected Zone & Hemisphere. “Add Point” appends into the current results list (can be mixed with CSV results).</div>
+
+        <!-- CSV Upload -->
+        <div style="height:18px"></div>
+        <div class="section-title">CSV Upload</div>
+        <input type="file" id="csv" accept=".csv" />
+        <div class="hint">CSV should include Easting and Northing columns (meters). Other columns are optional.</div>
+
+        <div style="height:10px"></div>
+        <div class="section-title">Column Mapping</div>
+        <div class="row">
+          <div style="flex:1 1 150px">
+            <label>Sr No</label>
+            <select id="col-number"></select>
+          </div>
+          <div style="flex:1 1 150px">
+            <label>Name</label>
+            <select id="col-name"></select>
+          </div>
+          <div style="flex:1 1 150px">
+            <label>Easting*</label>
+            <select id="col-easting" required></select>
+          </div>
+          <div style="flex:1 1 150px">
+            <label>Northing*</label>
+            <select id="col-northing" required></select>
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1 1 150px">
+            <label>Altitude</label>
+            <select id="col-alt"></select>
+          </div>
+        </div>
+
+        <div style="height:12px"></div>
+        <div class="stack">
+          <button class="btn" id="convertBtn">Convert All</button>
+          <button class="btn secondary" id="dlKml" disabled>Download KML (All)</button>
+          <button class="btn secondary" id="dlCsv" disabled>Download CSV (All)</button>
+        </div>
+        <div style="height:10px"></div>
+        <div id="msg"></div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <div class="section-title" style="margin:0">Preview</div>
+          <div class="hint">Shows after conversion</div>
+        </div>
+        <div id="preview" class="table-wrap"></div>
+        <div style="height:12px"></div>
+        <div id="map" class="map"></div>
+        <div style="height:10px"></div>
+        <details>
+          <summary>Troubleshooting — Nothing happens on “Convert”?</summary>
+          <ul>
+            <li>For manual: fill Easting and Northing (meters) and ensure Zone/Hemisphere are correct.</li>
+            <li>For CSV: ensure a CSV is selected and Easting/Northing are mapped.</li>
+            <li>Zone must be 1–60; Hemisphere set correctly (Bhavnagar → 43N).</li>
+            <li>If your latitudes don’t start near 21° and longitudes near 72° for Bhavnagar, swap Easting & Northing or check zone.</li>
+          </ul>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- Credit badge -->
+  <div class="credit">(C) Vijay Parmar</div>
+
+  <!-- Minimal Leaflet (load via CDN if online) -->
+  <style>
+    .leaflet-container{font:12px/1.5 Arial, Helvetica, sans-serif;}
+    .leaflet-pane,.leaflet-tile,.leaflet-marker-icon,.leaflet-marker-shadow,.leaflet-tile-container,.leaflet-pane>svg,.leaflet-pane>canvas,.leaflet-zoom-box,.leaflet-image-layer,.leaflet-layer{position:absolute;left:0;top:0}
+    .leaflet-container .leaflet-marker-pane img{width:25px;height:41px}
+    .leaflet-control-zoom{box-shadow:0 1px 5px rgba(0,0,0,0.4);border-radius:4px}
+    .leaflet-control-zoom a{background:#fff;border-bottom:1px solid #ddd;width:26px;height:26px;line-height:26px;text-align:center;display:block}
+  </style>
+  <script>
+  let L = null;
+  (async()=>{
+    try{
+      const css = document.createElement('link');
+      css.rel='stylesheet';
+      css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(css);
+      await new Promise(r=>css.onload=r);
+      const s=document.createElement('script');
+      s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      document.head.appendChild(s);
+      await new Promise(r=>s.onload=r);
+      L = window.L;
+    }catch(e){ }
+  })();
+  </script>
+
+  <script>
+  // ---- Theme toggle ----
+  const THEME_KEY = 'themeOverride';
+  function setTheme(t){ document.documentElement.setAttribute('data-theme', t); localStorage.setItem(THEME_KEY, t); paintThemeButton(); }
+  function currentTheme(){ return document.documentElement.getAttribute('data-theme') || 'light'; }
+  function paintThemeButton(){
+    const t = currentTheme();
+    const icon = document.getElementById('themeIcon');
+    const label = document.getElementById('themeLabel');
+    label.textContent = (t==='dark'?'Dark':'Light');
+    icon.innerHTML = (t==='dark'?
+      '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 1 0 9.79 9.79z"/></svg>' :
+      '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.76 4.84l-1.8-1.79L3.17 4.84l1.79 1.79 1.8-1.79zM1 13h3v-2H1v2zm10 10h2v-3h-2v3zM4.22 19.78l1.79-1.79-1.8-1.79-1.79 1.79 1.8 1.79zM13 1h-2v3h2V1zm7.83 3.83l-1.79-1.79-1.79 1.79 1.79 1.79 1.79-1.79zM20 11v2h3v-2h-3zm-3.76 8.16l1.8 1.79 1.79-1.79-1.8-1.79-1.79 1.79zM12 6a6 6 0 100 12 6 6 0 000-12z"/></svg>'
+    );
+  }
+  window.addEventListener('DOMContentLoaded', ()=>{
+    paintThemeButton();
+    document.getElementById('themeBtn').addEventListener('click', ()=>{
+      setTheme(currentTheme()==='dark'?'light':'dark');
+    });
+  });
+
+  // ---- Simple CSV parser (handles commas and quotes) ----
+  function parseCSV(text){
+    const rows=[]; let i=0, field='', row=[], inQ=false;
+    while(i<text.length){
+      const c=text[i];
+      if(inQ){
+        if(c==='"'){
+          if(text[i+1]==='"'){ field+='"'; i++; }
+          else inQ=false;
+        } else field+=c;
+      } else {
+        if(c==='"') inQ=true;
+        else if(c===','){ row.push(field); field=''; }
+        else if(c==='\n' || c==='\r'){
+          if(field!=='' || row.length>0){ row.push(field); rows.push(row); row=[]; field=''; }
+          if(c==='\r' && text[i+1]==='\n') i++;
+        } else field+=c;
+      }
+      i++;
+    }
+    if(field!==''||row.length>0){ row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  // ---- UTM → WGS84 conversion (pure JS) ----
+  function utmToLatLon(easting, northing, zone, northern=true){
+    const a=6378137.0; const f=1/298.257223563; const b=a*(1-f);
+    const e2=(a*a-b*b)/(a*a); const ep2=(a*a-b*b)/(b*b); const k0=0.9996;
+    let x=easting-500000.0; let y=northing; if(!northern) y-=10000000.0;
+    const m=y/k0; const mu=m/(a*(1-e2/4-3*e2*e2/64-5*e2*e2*e2/256));
+    const e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2));
+    const j1=(3*e1/2-27*Math.pow(e1,3)/32), j2=(21*e1*e1/16-55*Math.pow(e1,4)/32), j3=(151*Math.pow(e1,3)/96), j4=(1097*Math.pow(e1,4)/512);
+    const fp=mu + j1*Math.sin(2*mu) + j2*Math.sin(4*mu) + j3*Math.sin(6*mu) + j4*Math.sin(8*mu);
+    const sinfp=Math.sin(fp), cosfp=Math.cos(fp), tanfp=Math.tan(fp);
+    const c1=ep2*cosfp*cosfp, t1=tanfp*tanfp; const n1=a/Math.sqrt(1-e2*sinfp*sinfp); const r1=a*(1-e2)/Math.pow(1-e2*sinfp*sinfp,1.5);
+    const d=(easting-500000.0)/(n1*k0);
+    const lat = fp - (n1*tanfp/r1)*((d*d)/2 - (5+3*t1+10*c1-4*c1*c1-9*ep2)*Math.pow(d,4)/24 + (61+90*t1+298*c1+45*t1*t1-252*ep2-3*c1*c1)*Math.pow(d,6)/720);
+    const lon = (d - (1+2*t1+c1)*Math.pow(d,3)/6 + (5-2*c1+28*t1-3*c1*c1+8*ep2+24*t1*t1)*Math.pow(d,5)/120)/cosfp;
+    const lon0=(zone-1)*6-180+3; return { lat: lat*180/Math.PI, lon: lon*180/Math.PI + lon0 };
+  }
+
+  // ---- Helpers ----
+  const $ = (id)=>document.getElementById(id);
+  function clear(el){ while(el.firstChild) el.removeChild(el.firstChild); }
+  function toDMS(val, isLat){
+    const v = Number(val); const hemi = (isLat? (v>=0?'N':'S') : (v>=0?'E':'W'));
+    const av = Math.abs(v); const d = Math.floor(av); const mFloat = (av - d)*60; const m = Math.floor(mFloat); const s = (mFloat - m)*60; return `${d}° ${m}' ${s.toFixed(3)}" ${hemi}`;
+  }
+  function smartFind(headers, keys){
+    const idx = headers.findIndex(h=> keys.some(k=> h.toLowerCase().replace(/\s|_/g,'').includes(k)) );
+    return idx>=0? headers[idx] : '';
+  }
+
+  // State
+  let csvRows=null, headers=[], dataRows=[], lastResults=[];
+
+  function fillMappingSelects(){
+    const selects=['col-number','col-name','col-easting','col-northing','col-alt'].map($);
+    selects.forEach(sel=>{ clear(sel); const opt=document.createElement('option'); opt.value=''; opt.textContent='— Not used —'; sel.appendChild(opt); });
+    headers.forEach(h=>{ selects.forEach(sel=>{ const o=document.createElement('option'); o.value=h; o.textContent=h; sel.appendChild(o); }); });
+    $('col-easting').value = smartFind(headers, ['easting','east','utme','utmxe','utm x','utm-e']);
+    $('col-northing').value = smartFind(headers, ['northing','north','utmn','utm y','utm-n']);
+    $('col-number').value = smartFind(headers, ['srno','no','number','id']);
+    $('col-name').value   = smartFind(headers, ['name','label','point','pt']);
+    $('col-alt').value    = smartFind(headers, ['alt','altitude','height','elev','elevation','z']);
+  }
+
+  // ---- MANUAL ENTRY ----
+  function parseNum(val){ // allow commas
+    if(val===null||val===undefined) return NaN;
+    return parseFloat(String(val).replace(/,/g,''));
+  }
+
+  function currentFmt(){ return document.querySelector('input[name="fmt"]:checked').value; }
+
+  function manualBuildRow(sr, name, easting, northing, alt, zone, hemi){
+    const northern = (hemi==='N');
+    const {lat, lon} = utmToLatLon(easting, northing, zone, northern);
+    const fmt = currentFmt();
+    const displayLat = (fmt==='dms') ? toDMS(lat,true) : Number(lat.toFixed(8));
+    const displayLon = (fmt==='dms') ? toDMS(lon,false): Number(lon.toFixed(8));
+    return {
+      Number: sr||'',
+      Name: name||'',
+      Latitude: displayLat,
+      Longitude: displayLon,
+      Altitude: (alt??''),
+      _lat: lat, _lon: lon // keep numeric for KML/Map regardless of DD/DMS display
+    };
+  }
+
+  function convertManual(addMode=false){
+    const zone=Number($('zone').value); const hemi=$('hemi').value;
+    const e = parseNum($('m-east').value);
+    const n = parseNum($('m-north').value);
+    const alt = $('m-alt').value? parseNum($('m-alt').value) : '';
+    const sr = $('m-number').value.trim();
+    const name = $('m-name').value.trim();
+    const msgEl=$('msg');
+
+    if(!(zone>=1&&zone<=60)){ msgEl.innerHTML = `<div class="error">Zone must be between 1 and 60.</div>`; return; }
+    if(!isFinite(e)||!isFinite(n)){ msgEl.innerHTML = `<div class="error">Please enter valid numeric Easting and Northing (meters).</div>`; return; }
+
+    const row = manualBuildRow(sr,name,e,n,alt,zone,hemi);
+    if(addMode){
+      if(!Array.isArray(lastResults)) lastResults=[];
+      lastResults.push(row);
+      msgEl.innerHTML = `<div class="success">Added 1 point. Total rows: <b>${lastResults.length}</b>.</div>`;
+    }else{
+      lastResults = [row];
+      msgEl.innerHTML = `<div class="success">Converted single point.</div>`;
+    }
+
+    sanityCheckAndRender(lastResults);
+    enableDownloads(lastResults);
+    plotOnMap(lastResults);
+  }
+
+  $('mConvert').addEventListener('click', ()=> convertManual(false));
+  $('mAdd').addEventListener('click', ()=> convertManual(true));
+  $('clearAll').addEventListener('click', ()=>{
+    lastResults = [];
+    clear($('preview'));
+    $('dlCsv').disabled = true; $('dlKml').disabled = true;
+    const mapEl=$('map'); clear(mapEl);
+    $('msg').innerHTML = `<div class="success">Cleared results.</div>`;
+  });
+
+  // ---- CSV FLOW ----
+  $('csv').addEventListener('change', async (e)=>{
+    const f=e.target.files&&e.target.files[0]; if(!f){ csvRows=null; headers=[]; dataRows=[]; return; }
+    const text = await f.text();
+    const rows = parseCSV(text).filter(r=> r.length && r.some(x=> String(x).trim()!==''));
+    if(!rows.length){ $('msg').innerHTML = `<div class="error">Empty CSV.</div>`; return; }
+    csvRows=rows; headers=rows[0].map(h=> String(h).trim()); dataRows=rows.slice(1);
+    fillMappingSelects();
+    $('msg').innerHTML = `<div class="success">Loaded <b>${dataRows.length}</b> rows. Map the columns and click <b>Convert All</b>.</div>`;
+  });
+
+  $('convertBtn').addEventListener('click', ()=>{
+    const msgEl=$('msg');
+    if(!csvRows){ msgEl.innerHTML = `<div class="error">Please choose a CSV first.</div>`; return; }
+    const zone=Number($('zone').value); const hemi=$('hemi').value; if(!(zone>=1&&zone<=60)){ msgEl.innerHTML = `<div class="error">Zone must be between 1 and 60.</div>`; return; }
+    const ce=$('col-easting').value, cn=$('col-northing').value; if(!ce||!cn){ msgEl.innerHTML = `<div class="error">Easting and Northing are required. Please map both columns.</div>`; return; }
+    const ci={ number:$('col-number').value||null, name:$('col-name').value||null, e:ce, n:cn, alt:$('col-alt').value||null };
+    const hIndex=Object.fromEntries(headers.map((h,i)=>[h,i]));
+    const out=[]; const fmt=currentFmt(); const northern=(hemi==='N');
+
+    for(const r of dataRows){
+      const eStr=r[hIndex[ci.e]]??''; const nStr=r[hIndex[ci.n]]??'';
+      const e=parseFloat(String(eStr).replace(/,/g,'')); const n=parseFloat(String(nStr).replace(/,/g,''));
+      if(!isFinite(e)||!isFinite(n)) continue;
+      const {lat,lon}=utmToLatLon(e,n,zone,northern);
+      const useLat = fmt==='dms'? toDMS(lat,true) : Number(lat.toFixed(8));
+      const useLon = fmt==='dms'? toDMS(lon,false): Number(lon.toFixed(8));
+      out.push({
+        Number: ci.number? r[hIndex[ci.number]]:'', 
+        Name:   ci.name?   r[hIndex[ci.name]]  :'',
+        Latitude: useLat, Longitude: useLon, 
+        Altitude: ci.alt?  r[hIndex[ci.alt]]   :'',
+        _lat: lat, _lon: lon
+      });
+    }
+    if(!out.length){ msgEl.innerHTML = `<div class="error">No valid numeric Easting/Northing values found in the mapped columns.</div>`; return; }
+
+    lastResults = out;
+    sanityCheckAndRender(out);
+    enableDownloads(out);
+    plotOnMap(out);
+  });
+
+  function sanityCheckAndRender(rows){
+    const msgEl=$('msg');
+    const lats=rows.map(o=> typeof o._lat==='number'? o._lat : (typeof o.Latitude==='number'? o.Latitude:null)).filter(v=> v!==null);
+    const lons=rows.map(o=> typeof o._lon==='number'? o._lon : (typeof o.Longitude==='number'? o.Longitude:null)).filter(v=> v!==null);
+    if(lats.length && lons.length){
+      const latMed = lats.slice().sort((a,b)=>a-b)[Math.floor(lats.length/2)];
+      const lonMed = lons.slice().sort((a,b)=>a-b)[Math.floor(lons.length/2)];
+      if(!(latMed>5&&latMed<40&&lonMed>65&&lonMed<100)) msgEl.innerHTML = `<div class="warn">Converted coordinates look unusual for India. Please double-check Zone/Hemisphere and column mapping.</div>`;
+      else if(!/warn/.test(msgEl.innerHTML)) msgEl.innerHTML = `<div class="success">Converted <b>${rows.length}</b> row(s). You can download KML/CSV or view on the map below.</div>`;
+    }
+    renderTable(rows);
+  }
+
+  function renderTable(rows){
+    const prev=$('preview'); clear(prev);
+    const table=document.createElement('table');
+    const thead=document.createElement('thead'); const trh=document.createElement('tr');
+    ['Number','Name','Latitude','Longitude','Altitude'].forEach(h=>{const th=document.createElement('th'); th.textContent=h; trh.appendChild(th);});
+    thead.appendChild(trh); table.appendChild(thead);
+    const tb=document.createElement('tbody');
+    rows.forEach(r=>{ const tr=document.createElement('tr'); ['Number','Name','Latitude','Longitude','Altitude'].forEach(k=>{const td=document.createElement('td'); td.textContent=(r[k]??''); tr.appendChild(td);}); tb.appendChild(tr); });
+    table.appendChild(tb); prev.appendChild(table);
+  }
+
+  function enableDownloads(rows){
+    // CSV (uses displayed values per selected format)
+    const csvHead=['Number','Name','Latitude','Longitude','Altitude'];
+    const csv=[csvHead.join(',')].concat(rows.map(r=> csvHead.map(h=>{ const v=r[h]; if(v===null||v===undefined) return ''; const s=String(v); return /[",\n]/.test(s)? '"'+s.replace(/"/g,'""')+'"' : s; }).join(','))).join('\n');
+    const csvBlob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const csvUrl=URL.createObjectURL(csvBlob);
+    const dlCsvBtn=$('dlCsv'); dlCsvBtn.disabled=false; dlCsvBtn.onclick=()=>{ downloadLink(csvUrl,'converted_latlon.csv'); };
+
+    // KML (always uses numeric _lat/_lon if available)
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document>\n` +
+      rows.map(r=>{
+        const lon = (typeof r._lon==='number') ? r._lon : (typeof r.Longitude==='number'? r.Longitude : '');
+        const lat = (typeof r._lat==='number') ? r._lat : (typeof r.Latitude==='number'? r.Latitude : '');
+        const alt = (r.Altitude!=='' && r.Altitude!==undefined && r.Altitude!==null) ? r.Altitude : 0;
+        const nm = escapeXml(r.Name||r.Number||'point');
+        return `<Placemark><name>${nm}</name><Point><coordinates>${lon},${lat},${alt}</coordinates></Point></Placemark>`;
+      }).join('\n') +
+      `\n</Document></kml>`;
+    const kmlBlob=new Blob([kml],{type:'application/vnd.google-earth.kml+xml'}); const kmlUrl=URL.createObjectURL(kmlBlob);
+    const dlKmlBtn=$('dlKml'); dlKmlBtn.disabled=false; dlKmlBtn.onclick=()=>{ downloadLink(kmlUrl,'points.kml'); };
+  }
+
+  function downloadLink(url, filename){ const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0); }
+  function escapeXml(s){ return String(s).replace(/[<&>\"]/g, c=> ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+
+  async function plotOnMap(rows){
+    const mapEl=$('map'); if(!L){ mapEl.innerHTML='<div class="hint" style="padding:10px">Map preview unavailable offline. Downloads still work.</div>'; return; }
+    clear(mapEl); const map=L.map(mapEl).setView([21.76,72.15], 9);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+    const pts=[]; rows.forEach(r=>{
+      const lat = (typeof r._lat==='number') ? r._lat : (typeof r.Latitude==='number'? r.Latitude : null);
+      const lon = (typeof r._lon==='number') ? r._lon : (typeof r.Longitude==='number'? r.Longitude : null);
+      if(typeof lat==='number' && typeof lon==='number'){ pts.push([lat,lon]); }
+    });
+    if(pts.length){ const markers=pts.map(p=> L.marker(p).addTo(map)); const group=L.featureGroup(markers); try{ map.fitBounds(group.getBounds().pad(0.2)); }catch(e){} }
+  }
+  </script>
+</body>
+</html>
