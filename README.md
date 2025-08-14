@@ -1,6 +1,7 @@
 # UTM-to-GCS
 UTM Coordinate (Easting-Northing) converted to GCS Coordinates (Latitude-Longitude)
-![UTM to GSC](https://github.com/user-attachments/assets/df1d803d-7f0d-487d-9400-6bc1447b9173)
+![UTM to GSC 2](https://github.com/user-attachments/assets/432f6fdb-90f0-41a0-8155-63016b5219a1)
+
 
 # UTM ⇄ Lat/Lon (WGS84) — Two-Way Converter 🌏
 
