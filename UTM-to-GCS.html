@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>UTM ⇄ Lat/Lon (WGS84) — Two-Way Converter</title>
 
-<!-- Apply saved theme ASAP to avoid FOUC -->
+<!-- Theme bootstrap -->
 <script>
 (function(){
   try{
@@ -87,9 +87,27 @@ summary{cursor:pointer;font-weight:600}
   background:var(--card);border:1px solid var(--border);
   padding:6px 10px;border-radius:999px;box-shadow:0 4px 12px rgba(0,0,0,.15)}
 
-/* ---------- MOVING OCEAN BACKGROUND (10% visibility) ---------- */
+/* celebration overlay */
+#celebrate{
+  position:fixed; inset:0; pointer-events:none; z-index:9999; opacity:.5; display:none;
+}
+.confetti, .flower{
+  position:absolute; width:10px; height:10px; border-radius:2px;
+  animation: poof .5s ease-out forwards;
+}
+.flower{
+  width:12px; height:12px; border-radius:50%;
+  background: radial-gradient(circle at 30% 30%, #ffd700 0%, #ff6f00 60%, transparent 70%);
+}
+.confetti{ background: currentColor; }
+@keyframes poof{
+  0%{ transform: translate(0,0) scale(1); opacity:1; }
+  100%{ transform: translate(var(--tx), var(--ty)) rotate(var(--rot)) scale(.6); opacity:0; }
+}
+
+/* ---------- BACKGROUND ---------- */
 .ocean{
-  position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.50; /* 10% */
+  position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.12;
   background:
     radial-gradient(circle at 20% 30%, #00a1ff 0%, rgba(0,161,255,.6) 12%, transparent 35%),
     radial-gradient(circle at 80% 70%, #0090ff 0%, rgba(0,144,255,.5) 15%, transparent 38%),
@@ -107,6 +125,7 @@ summary{cursor:pointer;font-weight:600}
 </head>
 <body>
 <div class="ocean" aria-hidden="true"></div>
+<div id="celebrate"></div>
 
 <div class="wrap">
   <div class="toolbar">
@@ -120,160 +139,164 @@ summary{cursor:pointer;font-weight:600}
   </div>
 
   <div class="grid">
-    <div class="card" id="controls">
-      <!-- Mode -->
-      <div class="row">
-        <div style="flex:1 1 220px">
-          <label>Conversion Mode</label>
-          <select id="mode">
-            <option value="utm2gcs" selected>UTM → Lat/Lon</option>
-            <option value="gcs2utm">Lat/Lon → UTM</option>
-          </select>
-          <div class="hint">Switch direction any time.</div>
+    <!-- LEFT COLUMN: three stacked cards -->
+    <div class="stack" style="flex-direction:column">
+      <!-- Common Options -->
+      <div class="card" id="commonCard">
+        <div class="section-title">Common Options</div>
+        <div class="row">
+          <div style="flex:1 1 220px">
+            <label>Conversion Mode</label>
+            <select id="mode">
+              <option value="utm2gcs" selected>UTM → Lat/Lon</option>
+              <option value="gcs2utm">Lat/Lon → UTM</option>
+            </select>
+            <div class="hint">Switch direction any time.</div>
+          </div>
+          <div style="flex:1 1 180px">
+            <label>Output format</label>
+            <div class="row">
+              <label><input type="radio" name="fmt" value="dd" checked> Decimal Degrees</label>
+              <label><input type="radio" name="fmt" value="dms"> DMS</label>
+            </div>
+          </div>
         </div>
-        <div style="flex:1 1 160px">
-          <label>Output format</label>
+        <div id="zoneRow" class="row" style="margin-top:8px">
+          <div style="flex:1 1 120px">
+            <label>UTM Zone (1–60)</label>
+            <input type="number" id="zone" min="1" max="60" value="43" />
+          </div>
+          <div style="flex:1 1 160px">
+            <label>Hemisphere</label>
+            <select id="hemi">
+              <option value="N" selected>Northern</option>
+              <option value="S">Southern</option>
+            </select>
+          </div>
+          <div style="flex:1 1 220px">
+            <label><input type="checkbox" id="autoZone" checked> Auto detect from map/search</label>
+            <div class="hint">Auto-fills Zone & Hemisphere from picked location.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Manual Card -->
+      <div class="card" id="manualCard">
+        <div class="section-title">Manual Conversion</div>
+
+        <!-- MANUAL: UTM → GCS -->
+        <div id="pane-utm2gcs">
           <div class="row">
-            <label><input type="radio" name="fmt" value="dd" checked> Decimal Degrees</label>
-            <label><input type="radio" name="fmt" value="dms"> DMS</label>
+            <div style="flex:1 1 120px">
+              <label>Sr No (opt.)</label>
+              <input type="text" id="mUtm-number" placeholder="e.g., 1" />
+            </div>
+            <div style="flex:2 1 180px">
+              <label>Name (opt.)</label>
+              <input type="text" id="mUtm-name" placeholder="e.g., TP-01" />
+            </div>
+          </div>
+          <div class="row">
+            <div style="flex:1 1 150px">
+              <label>Easting* (m)</label>
+              <input type="number" id="mUtm-east" step="any" placeholder="e.g., 238456.12" />
+            </div>
+            <div style="flex:1 1 150px">
+              <label>Northing* (m)</label>
+              <input type="number" id="mUtm-north" step="any" placeholder="e.g., 2401234.56" />
+            </div>
+            <div style="flex:1 1 120px">
+              <label>Altitude (m)</label>
+              <input type="number" id="mUtm-alt" step="any" placeholder="optional" />
+            </div>
+          </div>
+          <div class="stack" style="margin-top:8px">
+            <button class="btn" id="mUtmConvert">Convert Single</button>
+            <button class="btn secondary" id="mUtmAdd">Add Point</button>
+          </div>
+        </div>
+
+        <!-- MANUAL: GCS → UTM -->
+        <div id="pane-gcs2utm" style="display:none">
+          <div class="row">
+            <div style="flex:1 1 120px">
+              <label>Sr No (opt.)</label>
+              <input type="text" id="mGcs-number" placeholder="e.g., 1" />
+            </div>
+            <div style="flex:2 1 180px">
+              <label>Name (opt.)</label>
+              <input type="text" id="mGcs-name" placeholder="e.g., TP-01" />
+            </div>
+          </div>
+          <div class="row">
+            <div style="flex:1 1 150px">
+              <label>Latitude* (°)</label>
+              <input type="number" id="mGcs-lat" step="any" placeholder="e.g., 21.7612" />
+            </div>
+            <div style="flex:1 1 150px">
+              <label>Longitude* (°)</label>
+              <input type="number" id="mGcs-lon" step="any" placeholder="e.g., 72.1534" />
+            </div>
+            <div style="flex:1 1 120px">
+              <label>Altitude (m)</label>
+              <input type="number" id="mGcs-alt" step="any" placeholder="optional" />
+            </div>
+          </div>
+          <div class="stack" style="margin-top:8px">
+            <button class="btn" id="mGcsConvert">Convert Single</button>
+            <button class="btn secondary" id="mGcsAdd">Add Point</button>
           </div>
         </div>
       </div>
 
-      <!-- Zone/Hemisphere (shared) -->
-      <div class="row">
-        <div style="flex:1 1 120px">
-          <label>UTM Zone (1–60)</label>
-          <input type="number" id="zone" min="1" max="60" value="43" />
-        </div>
-        <div style="flex:1 1 160px">
-          <label>Hemisphere</label>
-          <select id="hemi">
-            <option value="N" selected>Northern</option>
-            <option value="S">Southern</option>
-          </select>
-        </div>
-        <div style="flex:1 1 180px">
-          <label><input type="checkbox" id="autoZone" checked> Auto detect from map/search</label>
-          <div class="hint">Auto-fills Zone & Hemisphere from picked location.</div>
-        </div>
-      </div>
+      <!-- CSV Card -->
+      <div class="card" id="csvCard">
+        <div class="section-title">CSV Upload</div>
+        <input type="file" id="csv" accept=".csv" />
+        <div class="hint">Map columns according to your selected mode.</div>
 
-      <!-- MANUAL: UTM → GCS -->
-      <div id="pane-utm2gcs">
         <div style="height:10px"></div>
-        <div class="section-title">Manual Entry (UTM)</div>
-        <div class="row">
-          <div style="flex:1 1 120px">
-            <label>Sr No (opt.)</label>
-            <input type="text" id="mUtm-number" placeholder="e.g., 1" />
+        <div class="section-title">Column Mapping</div>
+        <!-- Mapping for UTM→GCS -->
+        <div id="map-utm2gcs">
+          <div class="row">
+            <div style="flex:1 1 150px"><label>Sr No</label><select id="u2g-col-number"></select></div>
+            <div style="flex:1 1 150px"><label>Name</label><select id="u2g-col-name"></select></div>
+            <div style="flex:1 1 150px"><label>Easting*</label><select id="u2g-col-e"></select></div>
+            <div style="flex:1 1 150px"><label>Northing*</label><select id="u2g-col-n"></select></div>
           </div>
-          <div style="flex:2 1 180px">
-            <label>Name (opt.)</label>
-            <input type="text" id="mUtm-name" placeholder="e.g., TP-01" />
-          </div>
-        </div>
-        <div class="row">
-          <div style="flex:1 1 150px">
-            <label>Easting* (m)</label>
-            <input type="number" id="mUtm-east" step="any" placeholder="e.g., 238456.12" />
-          </div>
-          <div style="flex:1 1 150px">
-            <label>Northing* (m)</label>
-            <input type="number" id="mUtm-north" step="any" placeholder="e.g., 2401234.56" />
-          </div>
-          <div style="flex:1 1 120px">
-            <label>Altitude (m)</label>
-            <input type="number" id="mUtm-alt" step="any" placeholder="optional" />
+          <div class="row">
+            <div style="flex:1 1 150px"><label>Altitude</label><select id="u2g-col-alt"></select></div>
           </div>
         </div>
-        <div class="stack" style="margin-top:8px">
-          <button class="btn" id="mUtmConvert">Convert Single</button>
-          <button class="btn secondary" id="mUtmAdd">Add Point</button>
+        <!-- Mapping for GCS→UTM -->
+        <div id="map-gcs2utm" style="display:none">
+          <div class="row">
+            <div style="flex:1 1 150px"><label>Sr No</label><select id="g2u-col-number"></select></div>
+            <div style="flex:1 1 150px"><label>Name</label><select id="g2u-col-name"></select></div>
+            <div style="flex:1 1 150px"><label>Latitude*</label><select id="g2u-col-lat"></select></div>
+            <div style="flex:1 1 150px"><label>Longitude*</label><select id="g2u-col-lon"></select></div>
+          </div>
+          <div class="row">
+            <div style="flex:1 1 150px"><label>Altitude</label><select id="g2u-col-alt"></select></div>
+          </div>
         </div>
-      </div>
 
-      <!-- MANUAL: GCS → UTM -->
-      <div id="pane-gcs2utm" style="display:none">
         <div style="height:10px"></div>
-        <div class="section-title">Manual Entry (Lat/Lon)</div>
-        <div class="row">
-          <div style="flex:1 1 120px">
-            <label>Sr No (opt.)</label>
-            <input type="text" id="mGcs-number" placeholder="e.g., 1" />
-          </div>
-          <div style="flex:2 1 180px">
-            <label>Name (opt.)</label>
-            <input type="text" id="mGcs-name" placeholder="e.g., TP-01" />
-          </div>
+        <div class="stack">
+          <button class="btn" id="convertBtn">Convert All</button>
+          <button class="btn secondary" id="dlKml" disabled>Download KML (All)</button>
+          <button class="btn secondary" id="dlCsv" disabled>Download CSV (All)</button>
+          <button class="btn secondary" id="clearAll">Clear Results</button>
         </div>
-        <div class="row">
-          <div style="flex:1 1 150px">
-            <label>Latitude* (°)</label>
-            <input type="number" id="mGcs-lat" step="any" placeholder="e.g., 21.7612" />
-          </div>
-          <div style="flex:1 1 150px">
-            <label>Longitude* (°)</label>
-            <input type="number" id="mGcs-lon" step="any" placeholder="e.g., 72.1534" />
-          </div>
-          <div style="flex:1 1 120px">
-            <label>Altitude (m)</label>
-            <input type="number" id="mGcs-alt" step="any" placeholder="optional" />
-          </div>
-        </div>
-        <div class="stack" style="margin-top:8px">
-          <button class="btn" id="mGcsConvert">Convert Single</button>
-          <button class="btn secondary" id="mGcsAdd">Add Point</button>
-        </div>
-      </div>
 
-      <!-- CSV (works for both modes via mapping) -->
-      <div style="height:16px"></div>
-      <div class="section-title">CSV Upload</div>
-      <input type="file" id="csv" accept=".csv" />
-      <div class="hint">Map columns according to your selected mode.</div>
-
-      <div style="height:10px"></div>
-      <div class="section-title">Column Mapping</div>
-      <!-- Mapping for UTM→GCS -->
-      <div id="map-utm2gcs">
-        <div class="row">
-          <div style="flex:1 1 150px"><label>Sr No</label><select id="u2g-col-number"></select></div>
-          <div style="flex:1 1 150px"><label>Name</label><select id="u2g-col-name"></select></div>
-          <div style="flex:1 1 150px"><label>Easting*</label><select id="u2g-col-e"></select></div>
-          <div style="flex:1 1 150px"><label>Northing*</label><select id="u2g-col-n"></select></div>
-        </div>
-        <div class="row">
-          <div style="flex:1 1 150px"><label>Altitude</label><select id="u2g-col-alt"></select></div>
-        </div>
+        <div style="height:10px"></div>
+        <div id="msg"></div>
       </div>
-      <!-- Mapping for GCS→UTM -->
-      <div id="map-gcs2utm" style="display:none">
-        <div class="row">
-          <div style="flex:1 1 150px"><label>Sr No</label><select id="g2u-col-number"></select></div>
-          <div style="flex:1 1 150px"><label>Name</label><select id="g2u-col-name"></select></div>
-          <div style="flex:1 1 150px"><label>Latitude*</label><select id="g2u-col-lat"></select></div>
-          <div style="flex:1 1 150px"><label>Longitude*</label><select id="g2u-col-lon"></select></div>
-        </div>
-        <div class="row">
-          <div style="flex:1 1 150px"><label>Altitude</label><select id="g2u-col-alt"></select></div>
-        </div>
-      </div>
-
-      <div style="height:10px"></div>
-      <div class="stack">
-        <button class="btn" id="convertBtn">Convert All</button>
-        <button class="btn secondary" id="dlKml" disabled>Download KML (All)</button>
-        <button class="btn secondary" id="dlCsv" disabled>Download CSV (All)</button>
-        <button class="btn secondary" id="clearAll">Clear Results</button>
-      </div>
-
-      <div style="height:10px"></div>
-      <div id="msg"></div>
     </div>
 
+    <!-- RIGHT COLUMN: Map + preview -->
     <div class="card">
-      <!-- Map search -->
       <div class="section-title" style="margin:0 0 8px">Map & Preview</div>
       <div class="row" style="gap:8px;margin-bottom:8px">
         <input type="text" id="searchBox" placeholder="Search place (e.g., Bhavnagar, India)" style="flex:1 1 320px">
@@ -363,7 +386,7 @@ function toDMS(val, isLat){
   const av = Math.abs(v); const d = Math.floor(av); const mFloat = (av - d)*60; const m = Math.floor(mFloat); const s = (mFloat - m)*60;
   return `${d}° ${m}' ${s.toFixed(3)}" ${hemi}`;
 }
-function zoneFromLon(lon){ return Math.floor((lon + 180) / 6) + 1; } // basic rule (ignores Norway/Svalbard special cases)
+function zoneFromLon(lon){ return Math.floor((lon + 180) / 6) + 1; } // ignores special cases
 function hemiFromLat(lat){ return (lat>=0)? 'N' : 'S'; }
 function escapeXml(s){ return String(s).replace(/[<&>"]/g, c=> ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
 
@@ -399,7 +422,7 @@ function utmToLatLon(easting, northing, zone, northern=true){
   const sinfp=Math.sin(fp), cosfp=Math.cos(fp), tanfp=Math.tan(fp);
   const c1=ep2*cosfp*cosfp, t1=tanfp*tanfp; const n1=a/Math.sqrt(1-e2*sinfp*sinfp); const r1=a*(1-e2)/Math.pow(1-e2*sinfp*sinfp,1.5);
   const d=(easting-500000.0)/(n1*k0);
-  const lat = fp - (n1*tanfp/r1)*((d*d)/2 - (5+3*t1+10+c1-4*c1*c1-9*ep2)*Math.pow(d,4)/24 + (61+90*t1+298*c1+45*t1*t1-252*ep2-3*c1*c1)*Math.pow(d,6)/720);
+  const lat = fp - (n1*tanfp/r1)*((d*d)/2 - (5+3*t1+10*c1-4*c1*c1-9*ep2)*Math.pow(d,4)/24 + (61+90*t1+298*c1+45*t1*t1-252*ep2-3*c1*c1)*Math.pow(d,6)/720);
   const lon = (d - (1+2*t1+c1)*Math.pow(d,3)/6 + (5-2*c1+28*t1-3*c1*c1+8*ep2+24*t1*t1)*Math.pow(d,5)/120)/cosfp;
   const lon0=(zone-1)*6-180+3;
   return { lat: lat*180/Math.PI, lon: lon*180/Math.PI + lon0 };
@@ -442,6 +465,48 @@ function latLonToUTM(latDeg, lonDeg, zoneOpt=null, hemiOpt=null){
 let csvRows=null, headers=[], dataRows=[], lastResults=[];
 let map = null, mapMarker = null, resultsGroup = null;
 const ORANGE_STYLE = { radius: 7, color: '#ff8c00', fillColor: '#ff8c00', fillOpacity: 0.9, weight: 2 };
+
+/* ---------------- CELEBRATION ---------------- */
+function celebrate(){
+  const box = document.getElementById('celebrate');
+  box.innerHTML='';
+  box.style.display='block';
+  const W = window.innerWidth, H = window.innerHeight;
+  const colors = ['#ff4d4f','#ff9800','#ffd700','#4caf50','#2196f3','#9c27b0'];
+  // confetti
+  for(let i=0;i<50;i++){
+    const d = document.createElement('div');
+    d.className='confetti';
+    d.style.left = (W/2)+'px';
+    d.style.top = (H/2)+'px';
+    d.style.color = colors[i%colors.length];
+    const angle = Math.random()*2*Math.PI;
+    const dist = 120 + Math.random()*220;
+    const tx = Math.cos(angle)*dist;
+    const ty = Math.sin(angle)*dist;
+    const rot = (Math.random()*720-360)+'deg';
+    d.style.setProperty('--tx', tx+'px');
+    d.style.setProperty('--ty', ty+'px');
+    d.style.setProperty('--rot', rot);
+    box.appendChild(d);
+  }
+  // flowers
+  for(let i=0;i<16;i++){
+    const d = document.createElement('div');
+    d.className='flower';
+    d.style.left = (W/2)+'px';
+    d.style.top = (H/2)+'px';
+    const angle = Math.random()*2*Math.PI;
+    const dist = 100 + Math.random()*200;
+    const tx = Math.cos(angle)*dist;
+    const ty = Math.sin(angle)*dist;
+    d.style.setProperty('--tx', tx+'px');
+    d.style.setProperty('--ty', ty+'px');
+    d.style.setProperty('--rot', '0deg');
+    box.appendChild(d);
+  }
+  setTimeout(()=>{ box.style.display='none'; box.innerHTML=''; }, 600); // ~0.5s
+}
 
 /* ---------------- UI RENDERERS ---------------- */
 function renderTable(rows, mode){
@@ -494,6 +559,8 @@ function switchMode(){
   $('pane-gcs2utm').style.display = (mode==='gcs2utm')?'':'none';
   $('map-utm2gcs').style.display = (mode==='utm2gcs')?'':'none';
   $('map-gcs2utm').style.display = (mode==='gcs2utm')?'':'none';
+  // Show zone/hemisphere row only for UTM→GCS
+  $('zoneRow').style.display = (mode==='utm2gcs') ? '' : 'none';
   // Message
   $('msg').innerHTML = `<div class="hint">Mode changed to <b>${mode==='utm2gcs'?'UTM → Lat/Lon':'Lat/Lon → UTM'}</b>.</div>`;
   // Re-render under new column order
@@ -543,7 +610,7 @@ function fillMappingSelects(){
 $('convertBtn').addEventListener('click', ()=>{
   const mode = $('mode').value, msgEl=$('msg');
   const zone=Number($('zone').value), hemi=$('hemi').value, northern=(hemi==='N');
-  if(!(zone>=1&&zone<=60)){ msgEl.innerHTML = `<div class="error">Zone must be 1–60.</div>`; return; }
+  if(mode==='utm2gcs' && !(zone>=1&&zone<=60)){ msgEl.innerHTML = `<div class="error">Zone must be 1–60.</div>`; return; }
 
   const out=[]; const fmt=document.querySelector('input[name="fmt"]:checked').value;
   const hIndex=Object.fromEntries(headers.map((h,i)=>[h,i]));
@@ -556,8 +623,8 @@ $('convertBtn').addEventListener('click', ()=>{
       const eStr=r[hIndex[ci.e]]??''; const nStr=r[hIndex[ci.n]]??'';
       const e=parseNum(eStr), n=parseNum(nStr); if(!isFinite(e)||!isFinite(n)) continue;
       const {lat,lon}=utmToLatLon(e,n,zone,northern);
-      const useLat = fmt==='dms'? toDMS(lat,true) : Number(lat.toFixed(8));
-      const useLon = fmt==='dms'? toDMS(lon,false): Number(lon.toFixed(8));
+      const useLat = fmt==='dms'? toDMS(lat,true) : lat.toFixed(16);
+      const useLon = fmt==='dms'? toDMS(lon,false): lon.toFixed(16);
       out.push({
         Number: ci.number? r[hIndex[ci.number]]:'', 
         Name:   ci.name?   r[hIndex[ci.name]]  :'',
@@ -574,16 +641,16 @@ $('convertBtn').addEventListener('click', ()=>{
       const lat=parseNum(r[hIndex[ci.lat]]), lon=parseNum(r[hIndex[ci.lon]]);
       if(!isFinite(lat)||!isFinite(lon)) continue;
       const auto = $('autoZone').checked;
-      const z = auto ? zoneFromLon(lon) : zone;
-      const h = auto ? hemiFromLat(lat) : hemi;
+      const z = auto ? zoneFromLon(lon) : Number($('zone').value);
+      const h = auto ? hemiFromLat(lat) : $('hemi').value;
       const {easting, northing} = latLonToUTM(lat, lon, z, h);
       out.push({
         Number: ci.number? r[hIndex[ci.number]]:'', 
         Name:   ci.name?   r[hIndex[ci.name]]  :'',
         Easting: Number(easting.toFixed(3)), Northing: Number(northing.toFixed(3)), Altitude: ci.alt? r[hIndex[ci.alt]] :'',
         Zone: z, Hemisphere: h,
-        Latitude: (fmt==='dms'? toDMS(lat,true) : Number(lat.toFixed(8))),
-        Longitude:(fmt==='dms'? toDMS(lon,false): Number(lon.toFixed(8))),
+        Latitude: (fmt==='dms'? toDMS(lat,true) : lat.toFixed(16)),
+        Longitude:(fmt==='dms'? toDMS(lon,false): lon.toFixed(16)),
         _lat: lat, _lon: lon
       });
     }
@@ -595,6 +662,7 @@ $('convertBtn').addEventListener('click', ()=>{
   enableDownloads(out);
   plotOnMap(out);
   msgEl.innerHTML = `<div class="success">Converted <b>${out.length}</b> row(s).</div>`;
+  celebrate();
 });
 
 /* ---------------- MANUAL CONVERT ---------------- */
@@ -613,13 +681,13 @@ function convertManualUtm(addMode){
   const fmt=currentFmt();
   const row={
     Number: sr||'', Name:name||'',
-    Latitude: (fmt==='dms'? toDMS(lat,true) : Number(lat.toFixed(8))),
-    Longitude:(fmt==='dms'? toDMS(lon,false): Number(lon.toFixed(8))),
+    Latitude: (fmt==='dms'? toDMS(lat,true) : lat.toFixed(16)),
+    Longitude:(fmt==='dms'? toDMS(lon,false): lon.toFixed(16)),
     Altitude: alt, Zone: zone, Hemisphere: hemi, Easting:e, Northing:n,
     _lat:lat, _lon:lon
   };
   if(addMode){ lastResults.push(row); $('msg').innerHTML=`<div class="success">Added 1 point. Total <b>${lastResults.length}</b>.</div>`; }
-  else { lastResults=[row]; $('msg').innerHTML=`<div class="success">Converted single point.</div>`; }
+  else { lastResults=[row]; $('msg').innerHTML=`<div class="success">Converted single point.</div>`; celebrate(); }
   renderTable(lastResults, 'utm2gcs'); enableDownloads(lastResults); plotOnMap(lastResults);
 }
 
@@ -632,21 +700,20 @@ function convertManualGcs(addMode){
   if(!(isFinite(lat)&&isFinite(lon) && lat>=-90 && lat<=90 && lon>=-180 && lon<=180))
     return $('msg').innerHTML=`<div class="error">Enter valid Latitude (−90..90) and Longitude (−180..180).</div>`;
   const auto = $('autoZone').checked;
-  const zoneBase = Number($('zone').value); const hemiBase=$('hemi').value;
-  const z = auto ? zoneFromLon(lon) : zoneBase;
-  const h = auto ? hemiFromLat(lat) : hemiBase;
+  const z = auto ? zoneFromLon(lon) : Number($('zone').value);
+  const h = auto ? hemiFromLat(lat) : $('hemi').value;
   const {easting, northing} = latLonToUTM(lat, lon, z, h);
   const fmt=currentFmt();
   const row={
     Number: sr||'', Name:name||'',
     Easting: Number(easting.toFixed(3)), Northing: Number(northing.toFixed(3)),
     Altitude: alt, Zone: z, Hemisphere: h,
-    Latitude: (fmt==='dms'? toDMS(lat,true) : Number(lat.toFixed(8))),
-    Longitude:(fmt==='dms'? toDMS(lon,false): Number(lon.toFixed(8))),
+    Latitude: (fmt==='dms'? toDMS(lat,true) : lat.toFixed(16)),
+    Longitude:(fmt==='dms'? toDMS(lon,false): lon.toFixed(16)),
     _lat: lat, _lon: lon
   };
   if(addMode){ lastResults.push(row); $('msg').innerHTML=`<div class="success">Added 1 point. Total <b>${lastResults.length}</b>.</div>`; }
-  else { lastResults=[row]; $('msg').innerHTML=`<div class="success">Converted single point.</div>`; }
+  else { lastResults=[row]; $('msg').innerHTML=`<div class="success">Converted single point.</div>`; celebrate(); }
   renderTable(lastResults, 'gcs2utm'); enableDownloads(lastResults); plotOnMap(lastResults);
 }
 
@@ -660,10 +727,16 @@ $('clearAll').addEventListener('click', ()=>{
 /* ---------------- MAP + SEARCH ---------------- */
 async function initMap(){
   if(!L){ $('map').innerHTML='<div class="hint" style="padding:10px">Map unavailable offline. Conversions still work.</div>'; return; }
-  map = L.map('map').setView([21.76,72.15], 9);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+  map = L.map('map').setView([21.76,72.15], 6);
+
+  // Bhuvan base (NRSC/ISRO). If it fails, keep map empty but usable.
+  const bhuvan = L.tileLayer('https://bhuvan-app1.nrsc.gov.in/tilecache/tilecache.py/1.0.0/bhuvan_base/{z}/{x}/{y}.jpg', {
+    maxZoom: 18, attribution: '© NRSC/ISRO Bhuvan'
+  }).addTo(map);
+
   map.on('click', (ev)=>{
     const {lat,lng} = ev.latlng;
+    // Auto set zone/hemi only if "UTM → GCS" requires it OR user wants auto for gcs2utm
     if($('autoZone').checked){
       const z = zoneFromLon(lng), h = hemiFromLat(lat);
       $('zone').value = z; $('hemi').value = h;
@@ -677,9 +750,12 @@ function placeMarker(lat, lon){
   if(mapMarker) map.removeLayer(mapMarker);
   mapMarker = L.marker([lat,lon]).addTo(map);
 }
-window.addEventListener('load', initMap);
+window.addEventListener('load', ()=>{
+  switchMode(); // initialize panel visibility
+  initMap();
+});
 
-$('searchBtn').addEventListener('click', async ()=>{
+document.getElementById('searchBtn').addEventListener('click', async ()=>{
   const q = $('searchBox').value.trim(); if(!q) return;
   try{
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`;
@@ -723,10 +799,6 @@ function plotOnMap(rows){
     try{ map.fitBounds(L.latLngBounds(pts).pad(0.2)); }catch(e){}
   }
 }
-
-/* ---------------- INIT ---------------- */
-switchMode(); // set initial panels
 </script>
 </body>
 </html>
-
